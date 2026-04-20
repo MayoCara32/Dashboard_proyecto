@@ -1,6 +1,13 @@
 import streamlit as st
 
-from src.config import DEFAULT_TOP_N, MAX_TOP_N, MIN_TOP_N, APP_SUBTITLE, APP_TITLE, VIEWS
+from src.config import (
+    APP_SUBTITLE,
+    APP_TITLE,
+    DEFAULT_TOP_N,
+    MAX_TOP_N,
+    MIN_TOP_N,
+    VIEWS,
+)
 
 
 def format_currency(value: float) -> str:
@@ -125,16 +132,11 @@ def render_filters(filter_options: dict) -> dict:
         default=[]
     )
 
-    gender_labels = {
-        "M": "Masculino",
-        "F": "Femenino"
-    }
-
     genders = st.sidebar.multiselect(
         "Género",
         options=filter_options["genders"],
         default=[],
-        format_func=lambda value: gender_labels.get(value, value)
+        format_func=lambda value: {"M": "Masculino", "F": "Femenino"}.get(value, value)
     )
 
     customer_segments = st.sidebar.multiselect(

@@ -19,6 +19,7 @@ from src.data_processing import (
     get_sales_by_payment,
     get_subcategory_summary,
 )
+from src.gemini_api import get_gemini_setup_status, test_gemini_connection
 from src.ui import format_currency, format_delta, format_number, render_mini_card
 
 
@@ -390,3 +391,80 @@ def render_table_view(df) -> None:
 
     with stats_tab:
         st.dataframe(numeric_summary, use_container_width=True, hide_index=True)
+
+
+def render_api_security_view() -> None:
+    st.markdown('<div class="section-title">API y seguridad básica</div>', unsafe_allow_html=True)
+
+    status = get_gemini_setup_status()
+
+    st.markdown(
+        """
+        <div class="info-box">
+        Esta vista sirve para verificar que la API de Gemini esté correctamente configurada
+        usando un archivo local de secretos de Streamlit y que la clave no esté expuesta
+        dentro del código fuente.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("SDK instalado", "Sí" if status["sdk_available"] else "No")
+    col2.metric("Clave detectada", "Sí" if status["api_key_present"] else "No")
+    col3.metric("Modelo configurado", status["model_name"])
+
+    st.markdown("### Estado actual")
+    st.write("**Fuente de la clave:** `.streamlit/secrets.toml`")
+    st.write(f"**Clave enmascarada:** `{status['masked_api_key']}`")
+
+    tab1, tab2, tab3 = st.tabs(
+        ["Conceptos", "Configuración local", "Prueba de conexión"]
+    )
+
+    with tab1:
+        st.markdown(
+            """
+            - La API key se guarda en `.streamlit/secrets.toml`
+            - La app la lee con `st.secrets`
+            - El archivo real de secretos no debe subirse a GitHub
+            - Para compartir la estructura, conviene usar `secrets.toml.example`
+            """
+        )
+
+    with tab2:
+        st.markdown("#### Archivo local esperado")
+        st.code(
+            'gemini_api_key = "TU_API_KEY_AQUI"\n'
+            'gemini_model = "gemini-3-flash-preview"',
+            language="toml"
+        )
+
+        st.markdown("#### Archivo que sí se sube")
+        st.code(
+            'gemini_api_key = "PEGA_AQUI_TU_API_KEY"\n'
+            'gemini_model = "gemini-3-flash-preview"',
+            language="toml"
+        )
+
+        st.markdown("#### Línea importante de `.gitignore`")
+        st.code(".streamlit/secrets.toml", language="text")
+
+    with tab3:
+        if not status["sdk_available"]:
+            st.error("No se encontró el SDK 'google-genai'.")
+        elif not status["api_key_present"]:
+            st.warning(
+                "No se encontró la clave en '.streamlit/secrets.toml'. "
+                "Configúrala antes de probar la conexión."
+            )
+        else:
+            st.success("La configuración mínima parece estar lista.")
+
+            if st.button("Probar conexión con Gemini"):
+                try:
+                    reply = test_gemini_connection()
+                    st.success("Conexión exitosa con la API.")
+                    st.code(reply)
+                except Exception as error:
+                    st.error(f"La prueba falló: {error}")

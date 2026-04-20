@@ -34,6 +34,22 @@ def load_source_tables(file_path_str: str) -> dict[str, pd.DataFrame]:
     }
 
 
+def _assign_customer_segments(customer_sales: pd.DataFrame) -> pd.DataFrame:
+    segmented = customer_sales.copy()
+
+    try:
+        ranked_sales = segmented["customer_total_sales"].rank(method="first")
+        segmented["CustomerSegment"] = pd.qcut(
+            ranked_sales,
+            q=3,
+            labels=["Bajo", "Medio", "Alto"]
+        )
+    except ValueError:
+        segmented["CustomerSegment"] = "Medio"
+
+    return segmented
+
+
 def build_analytical_dataset(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
     customers = tables["Customers"].copy()
     products = tables["Products"].copy()
@@ -84,12 +100,7 @@ def build_analytical_dataset(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
         .rename(columns={"net_sales": "customer_total_sales"})
     )
 
-    ranked_sales = customer_sales["customer_total_sales"].rank(method="first")
-    customer_sales["CustomerSegment"] = pd.qcut(
-        ranked_sales,
-        q=3,
-        labels=["Bajo", "Medio", "Alto"]
-    )
+    customer_sales = _assign_customer_segments(customer_sales)
 
     analytical_df = analytical_df.merge(
         customer_sales[["CustomerID", "CustomerSegment"]],
@@ -108,8 +119,6 @@ def get_filter_options(df: pd.DataFrame) -> dict:
         key=lambda x: segment_order.get(x, 99)
     )
 
-    gender_map = {"M": "Masculino", "F": "Femenino"}
-
     genders = sorted(df["Gender"].dropna().astype(str).unique().tolist())
 
     return {
@@ -120,7 +129,7 @@ def get_filter_options(df: pd.DataFrame) -> dict:
         "payment_methods": sorted(df["PaymentMethod"].dropna().astype(str).unique().tolist()),
         "customer_segments": customer_segments,
         "genders": genders,
-        "gender_map": gender_map,
+        "gender_map": {"M": "Masculino", "F": "Femenino"},
     }
 
 
