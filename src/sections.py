@@ -21,9 +21,16 @@ from src.data_processing import (
     get_subcategory_summary,
 )
 from src.gemini_api import (
-    ask_gemini_about_dashboard,
+    generate_gemini_response,
     get_gemini_setup_status,
     test_gemini_connection,
+)
+from src.prompting import (
+    build_dashboard_prompt,
+    get_model_limitations,
+    get_prompt_format_options,
+    get_prompt_style_options,
+    get_prompting_principles,
 )
 from src.ui import format_currency, format_delta, format_number, render_mini_card
 
@@ -490,8 +497,8 @@ def render_ai_qna_view(df, active_filters: list[str], top_n: int) -> None:
     st.markdown(
         """
         <div class="info-box">
-        Esta vista permite hacer una pregunta en lenguaje natural sobre el estado actual del dashboard filtrado.
-        La respuesta se genera a partir de un resumen preparado del análisis visible en este momento.
+        En esta versión, la consulta asistida por IA ya permite variar el diseño del prompt:
+        estilo de respuesta, formato de salida, uso de ejemplo y modo estricto basado en contexto.
         </div>
         """,
         unsafe_allow_html=True
@@ -502,18 +509,71 @@ def render_ai_qna_view(df, active_filters: list[str], top_n: int) -> None:
     metric_col2.metric("Ventas netas visibles", format_currency(context_bundle["metrics"]["net_sales"]))
     metric_col3.metric("Utilidad visible", format_currency(context_bundle["metrics"]["profit"]))
 
+    suggested_question = st.selectbox(
+        "Pregunta sugerida (opcional)",
+        (
+            "",
+            "¿Qué categoría lidera las ventas en el subconjunto actual?",
+            "¿Qué región muestra mayor utilidad y qué implica eso?",
+            "¿Qué clientes o productos destacan más en este contexto?",
+        )
+    )
+
     question = st.text_area(
         "Escribe tu pregunta sobre el dashboard",
-        placeholder="Ejemplo: ¿Qué categoría lidera las ventas en el subconjunto actual y qué regiones muestran mayor utilidad?"
+        value=suggested_question if suggested_question else "",
+        placeholder="Ejemplo: ¿Qué patrón comercial es más relevante en este subconjunto y qué limitaciones tiene el análisis actual?"
+    )
+
+    option_col1, option_col2 = st.columns(2)
+    with option_col1:
+        prompt_style = st.selectbox(
+            "Estilo de respuesta",
+            get_prompt_style_options()
+        )
+        strict_context = st.checkbox(
+            "Modo estricto: usar solo el contexto",
+            value=True
+        )
+
+    with option_col2:
+        output_format = st.selectbox(
+            "Formato de salida",
+            get_prompt_format_options()
+        )
+        include_example = st.checkbox(
+            "Incluir ejemplo dentro del prompt",
+            value=False
+        )
+
+    prompt_preview = build_dashboard_prompt(
+        question=question if question.strip() else "Sin pregunta todavía.",
+        dashboard_context=context_bundle["context_text"],
+        style=prompt_style,
+        output_format=output_format,
+        strict_context=strict_context,
+        include_example=include_example,
     )
 
     action_col1, action_col2 = st.columns([1, 1])
     ask_button = action_col1.button("Consultar a Gemini")
-    show_context = action_col2.checkbox("Mostrar contexto enviado al modelo")
+    show_prompt = action_col2.checkbox("Mostrar prompt generado")
 
-    if show_context:
-        with st.expander("Contexto resumido que se enviará al modelo", expanded=False):
-            st.code(context_bundle["context_text"])
+    if show_prompt:
+        with st.expander("Vista previa del prompt construido", expanded=False):
+            st.code(prompt_preview)
+
+    principle_col, limitation_col = st.columns(2)
+
+    with principle_col:
+        with st.expander("Buenas prácticas del prompt aplicado hoy", expanded=False):
+            for item in get_prompting_principles():
+                st.write(f"- {item}")
+
+    with limitation_col:
+        with st.expander("Limitaciones que deben explicarse al usuario", expanded=False):
+            for item in get_model_limitations():
+                st.write(f"- {item}")
 
     if not status["sdk_available"] or not status["api_key_present"]:
         st.warning(
@@ -525,12 +585,7 @@ def render_ai_qna_view(df, active_filters: list[str], top_n: int) -> None:
         st.markdown("### Resumen local disponible")
         st.write(f"**Filtros activos:** {context_bundle['filters_text']}")
         st.write(f"**Rango visible:** {context_bundle['date_min']} a {context_bundle['date_max']}")
-
-        st.dataframe(
-            context_bundle["category_sales"],
-            use_container_width=True,
-            hide_index=True
-        )
+        st.dataframe(context_bundle["category_sales"], use_container_width=True, hide_index=True)
         return
 
     if ask_button:
@@ -539,13 +594,14 @@ def render_ai_qna_view(df, active_filters: list[str], top_n: int) -> None:
         else:
             try:
                 with st.spinner("Generando respuesta..."):
-                    answer = ask_gemini_about_dashboard(
-                        question=question.strip(),
-                        dashboard_context=context_bundle["context_text"]
-                    )
+                    answer = generate_gemini_response(prompt_preview)
 
                 st.markdown("### Respuesta de Gemini")
                 st.write(answer)
+
+                st.caption(
+                    "La respuesta se generó a partir del contexto resumido del dashboard filtrado actual."
+                )
 
             except Exception as error:
                 st.error(f"No fue posible generar la respuesta: {error}")

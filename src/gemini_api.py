@@ -85,26 +85,13 @@ def test_gemini_connection(prompt: str = "Responde únicamente con: OK") -> str:
     return "La API respondió, pero no se pudo extraer texto simple de la respuesta."
 
 
-def ask_gemini_about_dashboard(question: str, dashboard_context: str) -> str:
+def generate_gemini_response(prompt_text: str) -> str:
     client = build_gemini_client()
     model_name = get_gemini_model()
 
-    full_prompt = f"""
-Actúa como un analista de datos que responde en español.
-Usa solamente la información del contexto.
-No inventes cifras ni afirmaciones que no estén en el contexto.
-Si la pregunta no puede responderse con el contexto, dilo explícitamente.
-Responde de forma clara, breve y útil.
-
-{dashboard_context}
-
-PREGUNTA DEL USUARIO:
-{question}
-""".strip()
-
     response = client.models.generate_content(
         model=model_name,
-        contents=full_prompt
+        contents=prompt_text
     )
 
     text_response = getattr(response, "text", None)
